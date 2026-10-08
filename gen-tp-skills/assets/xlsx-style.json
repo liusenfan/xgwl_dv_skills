@@ -1,0 +1,25 @@
+{
+  "reference": "VU_vfmacc_vv_TP_0914.xlsx",
+  "font": "Carlito",
+  "headerSize": 11,
+  "bodySize": 10,
+  "headerFill": "#1F4E78",
+  "headerColor": "#FFFFFF",
+  "bodyColor": "#000000",
+  "columns": [
+    {"name": "TP_ID", "source": 4, "width": 42},
+    {"name": "lifecycle_status", "source": "status", "width": 18},
+    {"name": "verification_goal", "source": 5, "width": 85},
+    {"name": "coverage_strategy", "source": 8, "width": 72},
+    {"name": "coverage_strategy_mapping", "source": 11, "width": 36},
+    {"name": "requirement_category", "source": 0, "width": 22},
+    {"name": "sub_requirement_l1", "source": 1, "width": 24},
+    {"name": "sub_requirement_l2", "source": 2, "width": 22},
+    {"name": "sub_requirement_l3", "source": 3, "width": 22},
+    {"name": "requirement_ids", "source": 6, "width": 35},
+    {"name": "related_testcases", "source": 7, "width": 30},
+    {"name": "directed_stimulus", "source": 9, "width": 72},
+    {"name": "environment_checks", "source": 10, "width": 85},
+    {"name": "design_version", "source": 12, "width": 20}
+  ]
+}
