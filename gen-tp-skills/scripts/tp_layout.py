@@ -2,6 +2,7 @@
 import re
 
 MARKER = '分类体系：base-cross-scenario'
+STATUS_POLICY = '内容完整性'
 CATEGORIES = ['Register Access', 'Config Space', 'Dynamic Input', 'Performance', 'Cross', 'Scenario']
 ISSUE_HEADERS = ['issue_id', 'issue_status', 'affected_parameter', 'scenario_context',
                  'unresolved_item', 'missing_content', 'completion_condition', 'source', 'affected_tp_ids']
@@ -12,7 +13,13 @@ LIFECYCLE_HEADERS = ['affected_tp_id', 'lifecycle_status', 'missing_content',
 def make_layout(document, sections, table):
     """No guessing/reclassification: legacy documents retain their original layout."""
     markers = [m for m in document['meta'] if re.match(r'^分类体系[：:]', m)]
+    policies = [m for m in document['meta'] if re.match(r'^状态口径[：:]', m)]
+    if policies and (len(policies) != 1 or
+                     re.sub(r'^状态口径[：:]\s*', '', policies[0]) != STATUS_POLICY):
+        raise ValueError('未知或重复的状态口径')
     if not markers:
+        if policies:
+            raise ValueError('内容完整性状态口径须使用 base-cross-scenario 分类体系')
         return None
     if len(markers) != 1 or re.sub(r'^分类体系[：:]\s*', '', markers[0]) != 'base-cross-scenario':
         raise ValueError('未知或重复的分类体系')
@@ -37,14 +44,21 @@ def make_layout(document, sections, table):
             raise ValueError(f'{category} 不适用与主表测试点冲突')
     if seen != set(CATEGORIES[:4]):
         raise ValueError('base 适用性缺少必查类别')
+    # Legacy documents keep their old fallback. New plans require an explicit
+    # semantic decision: the parser cannot infer completeness from nonempty cells.
+    explicit_status = bool(policies)
     statuses = {tp: 'draft' for tp in ids}
+    state_seen = set()
     if '测试点状态' in sections:
-        state_seen = set()
         for _, (tp, status) in table(sections['测试点状态'], ['TP_ID', 'lifecycle_status']):
-            if tp not in ids or tp in state_seen or status not in ('draft', 'reviewed', 'complete'):
+            allowed = ('draft', 'complete') if explicit_status else ('draft', 'reviewed', 'complete')
+            if tp not in ids or tp in state_seen or status not in allowed:
                 raise ValueError('测试点状态含未知/重复 TP 或非法文档状态')
             state_seen.add(tp)
             statuses[tp] = status
+    if explicit_status and state_seen != ids:
+        raise ValueError('内容完整性口径须逐点显式记录 draft/complete，缺少: ' +
+                         ', '.join(sorted(ids - state_seen)))
     issues, lifecycle, issue_ids = [], [], set()
     for _, row in table(sections['规格缺口'], ISSUE_HEADERS):
         key, state, parameter, context, unresolved, missing, condition, source, affected = row

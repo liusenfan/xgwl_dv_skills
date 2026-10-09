@@ -6,7 +6,7 @@
 
 | TP 类别 | Sheet 名（固定拼写与顺序） | 主验证目标 | 应包含的内容 |
 |---|---|---|---|
-| base | Register Access | 寄存器访问语义正确 | 设计规定的复位值、读写属性、掩码、只读/写一清零等副作用、地址译码及保留位访问行为；未知规则不能由字段名字推断 |
+| base | Register Access | 寄存器属性正确 | 设计规定的复位值、访问权限、有效位/掩码、保留位、读写副作用及访问限制；APB仅为访问手段，不以总线协议行为作为该页目标；未知规则不能由字段名字推断 |
 | base | Config Space | 配置对业务的作用正确 | 工作模式、静态参数、配置选择/提交/生效、有效范围与边界、配置改变引起的业务效果；说明配置对象、字段及使用它的业务 |
 | base | Dynamic Input | 输入接口及运行期输入语义正确 | 请求、数据、控制、ACK、资源返回等输入的字段、合法值、边界、握手、时序、连续输入及反压响应；动态请求寄存器也按本次目标区分访问测试和输入功能测试 |
 | base | Performance | 性能承诺及公开性能度量正确 | 负载、测量起止事件、单位、吞吐/延迟/利用率及设计定义的计数语义；仅计数器读写不等于性能验证 |
@@ -28,6 +28,14 @@
 
 例：TS 的任务属性读回归 Register Access，任务配置提交及效果归 Config Space，Trigger/ACK/Credit 输入合同归 Dynamic Input，明确的发射吞吐目标归 Performance，业务与资源竞争归 Cross，Normal/Special 的单 Task、搬入/搬出、Bypass、Reduce 完整流程归 Scenario。具体内容仍须以本次 TS 设计为准。
 
+### Register Access 的模块级边界
+
+- 用合法、已完成的寄存器读写操作作为前提，检查寄存器/字段的值、权限、保持和访问副作用。直接激励可写目标寄存器、地址及数据，但不展开APB Setup/Access拍、PSEL/PENABLE握手、PREADY等待、PSTRB传输规则、PSLVERR响应、不对齐/未映射地址等协议专项。
+- 地址用于定位寄存器，不把地址译码扫描当作本页独立目标；仍检查写目标字段不破坏同寄存器其他字段，以及设计规定的独立寄存器互不影响。只有已定义的联动、别名或副作用才允许影响其他对象。
+- 区分“寄存器值/访问属性”与“配置后的业务效果”：如写1清零、写后自清、锁定后写不生效归本页；写START后业务如何启动、执行和结束归 Config Space/Cross/Scenario。状态位由硬件更新时，本页检查其可见值、软件访问属性及规定的更新优先级，完整业务流程仍在相应场景验证。
+- 仅覆盖设计明确存在的属性；保留位不默认读0，WO读回值、自清时机、软硬件同时更新优先级均不得凭经验补造。缺失且影响既有目标时，按draft规则注明对象、原因及问题ID。
+- APB协议验证由单独授权的总线/接口验证范围承接，不能仅换Sheet后自动纳入本次模块寄存器属性分析。修订旧计划时记录原APB TP的范围处置及去向，不擅自删除旧ID；若用户明确要求总线专项，再单独规划。
+
 ## 3. 两张 missing-input 表
 
 ### Scenario missing-input：设计问题台账
@@ -39,11 +47,11 @@
 `issue_id | issue_status | affected_parameter | scenario_context | unresolved_item | missing_content | completion_condition | source | affected_tp_ids`
 
 - `issue_id` 唯一；`issue_status` 为 `open` 或 `resolved`。resolved 行须保留已确认结论及来源，不能仅为隐藏阻塞而关单。
-- `source` 写具体文档版本/章节及冲突双方；多个 `affected_tp_ids` 用英文逗号分隔，纯问题填 `-`。
+- `source` 简写文档名、版本、章节标题/编号及段落、表名或字段；必要时加可检索原文短语或行号。不能只写“§4.1.2表”；冲突保留双方位置及当前工作基线。多个 `affected_tp_ids` 用英文逗号分隔，纯问题填 `-`。
 - 纯问题不计入 TP 总数；有明确设计目标的 TP 留在所属主 Sheet，不能搬到问题表后不计数。
 - 平台实现/检查能力不足写能力交接，与设计问题分开；不能据平台缺口将规格标成冲突。
 
-### lifecycle missing-input：按 TP 展开的定稿阻塞视图
+### lifecycle missing-input：按 TP 展开的设计内容缺口视图
 
 这里的 lifecycle 指**测试点文档状态**，不是 DUT 的运行生命周期。参考表包含 draft 的 Config Space、Dynamic Input、Cross TP 及其缺失规格和解除条件。
 
@@ -51,7 +59,24 @@
 
 `affected_tp_id | lifecycle_status | missing_content | completion_or_unblock_condition | issue_id`
 
-同一问题可影响多个 TP，同一 TP 可关联多个问题；它们是关联记录，不产生新 TP。问题正文只在 Scenario missing-input 维护，生成此视图避免两边结论漂移。主表受 open 问题影响的 TP 状态为 draft；未关联问题也不会自动变成 complete。默认全部为 draft，已评审状态通过 `## 测试点状态` 的 `TP_ID | lifecycle_status` 表记录，允许 draft/reviewed/complete；reviewed/complete 须有实际评审依据。**complete 仅表示计划内容定稿，不表示仿真通过或验证覆盖完成。** open 问题与 reviewed/complete 冲突时先修订状态，不能静默掩盖问题。
+同一问题可影响多个 TP，同一 TP 可关联多个问题；它们是关联记录，不产生新 TP。问题正文只在 Scenario missing-input 维护，生成此视图避免两边结论漂移。只有影响目标、必要条件与激励、预期判据、覆盖要求或来源完整性的 open 问题才在 `affected_tp_ids` 关联对应 TP；这些 TP 标 `draft`。纯实施问题放能力交接，不通过问题关联降低状态。
+
+### 内容完整性状态
+
+- `complete`：上述必要内容已明确且齐全，即使 driver/checker、覆盖采样或自动转换仍待设计。无需以人工批准作为前置。
+- `draft`：必要内容仍缺失、冲突或尚未补齐；必须说明为什么未完整。无 open 问题不自动证明完整，须按实际内容判断。
+- `reviewed`：仅兼容历史状态，保留其原始评审依据；新计划使用 `draft/complete`，评审记录与内容状态分开。
+
+### draft 原因的写法
+
+- 主表 `verification_goal`（工作字段“测试点描述”）末尾写 `draft原因：<具体缺口及影响>（<issue_id>）`，以一行短句说明；不能只有 draft、待确认或需要 check。
+- 每条 draft 都关联至少一项 open 内容问题，在 `Scenario missing-input` 唯一维护具体缺失/冲突、来源和完成条件，派生到 `lifecycle missing-input`；缺少必要描述时也记录具体待补内容，不能留下无原因的 draft。
+- 归组 TP 明确缺口影响的寄存器、字段、分支或判据，并保留其余已明确部分。例如：`draft原因：SELF_START[31:1]及ROUTER_TABLE保留位复位值未定义，整体读回无法唯一判定（Q04）`。不能让整行 draft 被误读为所有寄存器都未定义，也不因此自动拆点或重编 ID。
+- 问题解决后补齐内容、更新问题关联和状态；平台、表达或转换待办仍单独交接，不能用“断言未实现/没有覆盖率模型”解释 draft。
+
+新计划在头部写 `> 状态口径：内容完整性`，并在 `## 测试点状态` 的 `TP_ID | lifecycle_status` 表逐点记录 `draft/complete`。工具检查全量状态记录和 open 问题一致性，不根据非空单元格或是否含“待设计”自动判断语义完整。缺状态应补判定，不静默改为 complete。无新口径标记的历史文件保留旧状态及未列点的 draft 回退，不因升级自动改状态。
+
+**complete 仅表示测试点定义完整，不表示已人工评审、执行通过或覆盖完成。** open 设计问题与 complete 冲突时报告错误并修订状态，不静默掩盖问题。
 
 没有问题时保留这两张表的表头，在 Plan Notes 中说明“本次未识别到设计缺口（不代表规格无缺陷）”；不制造占位测试点。实际业务的创建、完成、退休、复用等运行生命周期测试仍归 Scenario 或具有独立交互目标的 Cross。
 

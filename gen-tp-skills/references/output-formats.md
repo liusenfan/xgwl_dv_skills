@@ -26,9 +26,9 @@
 | Excel 列名 | 原计划字段 |
 |---|---|
 | TP_ID | 测试点名 |
-| lifecycle_status | 新版每点默认 draft；显式状态表保留有依据的 reviewed/complete，受 open 规格问题影响者必须 draft。仅为文档状态，不从度量推测已执行/通过；旧格式沿用文档元信息 |
-| verification_goal | 测试点描述，保持全文 |
-| coverage_strategy | 功能覆盖率描述(Optional)，`[t]` 无辅助覆盖时为 `-` |
+| lifecycle_status | 新内容口径逐点显式填写：必要内容齐全为 complete，内容缺失/冲突为 draft；平台与转换待办不降低状态。工具校验状态记录和问题关联，不自动判完整；旧口径保留历史状态，不代表执行/覆盖结论 |
+| verification_goal | 测试点描述，保持全文；draft 点末尾保留具体原因、影响及问题 ID，不只显示状态 |
+| coverage_strategy | 功能覆盖率描述(Optional)：新建/修订点明确主方法、简短选择理由及必要辅助方法；断言与功能覆盖率按目标选择，见字段合同；旧表原样转换保留历史内容 |
 | coverage_strategy_mapping | 度量测试点覆盖，保持原目标/占位 |
 | requirement_category | 测试需求 |
 | sub_requirement_l1 / l2 / l3 | 三层测试子需求，分别保留 |

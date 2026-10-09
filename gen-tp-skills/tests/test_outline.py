@@ -59,6 +59,92 @@ class OutlineTests(unittest.TestCase):
             with self.subTest(source=source[-100:]), self.assertRaises(ContractError):
                 parse_document(source)
 
+    def content_plan(self, status='complete'):
+        source = self.text.replace('> 分类体系：base-cross-scenario',
+                                   '> 分类体系：base-cross-scenario\n> 状态口径：内容完整性')
+        source = source.replace('| open |', '| resolved |')
+        source += '\n## 测试点状态\n\n| TP_ID | lifecycle_status |\n|---|---|\n'
+        for tp in ('demo_length_001', 'demo_stable_002', 'demo_reset_003'):
+            source += f'| {tp} | {status} |\n'
+        return source
+
+    def test_explicit_complete_with_implementation_todos(self):
+        # Synthetic state fixture; the parser must preserve decisions, not judge prose.
+        source = self.content_plan()
+        self.assertIn('[cp] 待设计:', source)
+        self.assertIn('[t] 待反填', source)
+        doc = parse_document(source)
+        self.assertEqual(set(doc['layout']['point_status'].values()), {'complete'})
+        self.assertEqual(doc['layout']['issue_sheets'][1]['rows'], [])
+
+    def test_content_policy_requires_all_explicit_states(self):
+        source = self.content_plan()
+        for candidate in (source.split('\n## 测试点状态')[0],
+                          source.replace('| demo_stable_002 | complete |\n', '')):
+            with self.subTest(candidate=candidate[-80:]), self.assertRaisesRegex(ContractError, '逐点'):
+                parse_document(candidate)
+
+    def test_content_policy_rejects_conflicting_or_legacy_states(self):
+        cases = [self.content_plan().replace('| DEMO-G03 | resolved |', '| DEMO-G03 | open |'),
+                 self.content_plan('reviewed'),
+                 self.content_plan().replace('状态口径：内容完整性', '状态口径：automatic'),
+                 self.content_plan().replace('> 状态口径：内容完整性',
+                                             '> 状态口径：内容完整性\n> 状态口径：内容完整性'),
+                 self.content_plan().replace('> 分类体系：base-cross-scenario\n', '')]
+        for source in cases:
+            with self.subTest(source=source[-80:]), self.assertRaises(ContractError):
+                parse_document(source)
+
+    def test_resolution_does_not_automatically_promote_draft(self):
+        doc = parse_document(self.content_plan('draft'))
+        self.assertEqual(set(doc['layout']['point_status'].values()), {'draft'})
+        self.assertEqual(doc['layout']['issue_sheets'][1]['rows'], [])
+
+    def test_reordering_rows_preserves_ids_and_statuses(self):
+        source = self.content_plan().replace('| demo_stable_002 | complete |',
+                                             '| demo_stable_002 | draft |')
+        old = parse_document(source)
+        lines = source.splitlines()
+        indexes = [i for i, line in enumerate(lines)
+                   if line.startswith(('| Scenario | 端到端', '| Dynamic Input | 反压', '| Scenario | 事务中'))]
+        reversed_rows = [lines[i] for i in reversed(indexes)]
+        for i, row in zip(indexes, reversed_rows):
+            lines[i] = row
+        new = parse_document('\n'.join(lines))
+        self.assertEqual(old['layout']['point_status'], new['layout']['point_status'])
+        self.assertEqual({r[4]: r for r in old['rows']}, {r[4]: r for r in new['rows']})
+
+    def test_content_status_example_keeps_platform_todos_separate(self):
+        doc = parse_document((ROOT/'examples/content-status-tp.md').read_text(encoding='utf-8'))
+        self.assertEqual(doc['layout']['point_status'],
+                         {'demo_backpressure': 'complete', 'demo_throughput': 'draft'})
+        self.assertEqual([r[0] for r in doc['layout']['issue_sheets'][1]['rows']],
+                         ['demo_throughput'])
+
+    @unittest.skipUnless(os.environ.get('TP_OUTLINE_NODE') and os.environ.get('TP_OUTLINE_MODULES'), 'requires artifact runtime')
+    def test_content_status_survives_all_format_exports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = ROOT/'examples/content-status-tp.md'
+            out = Path(tmp)/'out'
+            cmd = [sys.executable, '-X', 'utf8', '-B', str(ROOT/'scripts/export_tp.py'), str(source),
+                   '--out-dir', str(out), '--formats', 'xlsx', 'html', 'markdown',
+                   '--node', os.environ['TP_OUTLINE_NODE'], '--node-modules', os.environ['TP_OUTLINE_MODULES']]
+            run = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(run.returncode, 0, run.stderr)
+            doc = parse_document(source.read_text(encoding='utf-8'))
+            doc['notes'] = notes(doc)
+            profile = json.loads((ROOT/'assets/xlsx-style.json').read_text(encoding='utf-8'))
+            self.assertEqual(verify(out/'content-status-tp.xlsx', doc, profile), 2)
+            sheets = read_sheets(out/'content-status-tp.xlsx')
+            self.assertEqual(sheets['Dynamic Input'][1]['B'], 'complete')
+            self.assertEqual(sheets['Performance'][1]['B'], 'draft')
+            self.assertEqual(len(sheets['lifecycle missing-input']), 2)
+            self.assertEqual((out/'content-status-tp.md').read_text(encoding='utf-8'),
+                             source.read_text(encoding='utf-8'))
+            html = (out/'content-status-tp.html').read_text(encoding='utf-8')
+            self.assertIn('complete', html)
+            self.assertIn('demo_backpressure', html)
+
     def test_empty_issues_and_legacy_layout(self):
         source = '\n'.join(line for line in self.text.splitlines() if not line.startswith('| DEMO-G'))
         doc = parse_document(source)
